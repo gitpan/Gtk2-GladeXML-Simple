@@ -8,7 +8,7 @@ use Gtk2::GladeXML;
 
 our $VERSION;
 
-$VERSION = '0.21';
+$VERSION = '0.22';
 
 sub new {
     my ( $class, $gladefile, $root, $domain ) = @_;
@@ -248,7 +248,7 @@ engine using WWW::Search::Yahoo.
 
    1;
 
-The I<yahoo.glade> file needed for this example is in the I<examples> directory, along
+The I<yahoo.glade> file needed for this example is in the I<examples> directory,along 
 with other example programs.
 
 =head1 SEE ALSO

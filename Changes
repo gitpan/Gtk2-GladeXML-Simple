@@ -1,6 +1,6 @@
 Revision history for Perl extension Gtk2::GladeXML::Simple.
 
-0.021 Wed Jun 22 12:48:12 2005
+0.022 Wed Jun 22 12:48:12 2005
       - Fixed POD errors and added some comments to the code.
 
 0.02  Mon Jun 20 02:20:24 2005
