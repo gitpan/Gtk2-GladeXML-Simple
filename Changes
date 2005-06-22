@@ -1,8 +1,11 @@
 Revision history for Perl extension Gtk2::GladeXML::Simple.
 
+0.021 Wed Jun 22 12:48:12 2005
+      - Fixed POD errors and added some comments to the code.
+
 0.02  Mon Jun 20 02:20:24 2005
       - Replaced signal_autoconnect_from_package with a custom autoconnect helper method and
-        g_signal_connect() from glib's API.
+        g_signal_connect()/g_signal_connect_after() from glib's API.
       - No longer use for AUTOLOAD.
 
 0.01  Mon Jun 13 01:32:12 2005

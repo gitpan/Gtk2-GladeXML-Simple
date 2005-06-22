@@ -5,11 +5,10 @@ use strict;
 use warnings;
 use Carp;
 use Gtk2::GladeXML;
-use Data::Dumper;
 
 our $VERSION;
 
-$VERSION = '0.2';
+$VERSION = '0.21';
 
 sub new {
     my ( $class, $gladefile, $root, $domain ) = @_;
@@ -96,6 +95,7 @@ Gtk2::GladeXML::Simple offers:
 =item *
 
 Signal-handler callbacks as methods of your class.
+
    sub on_button1_clicked {
       my $self = shift; # $self always received as first parameter
       ...
@@ -113,6 +113,7 @@ Autoconnection of custom widget-creation functions.
 =item *
 
 Access to the widgets as instance attributes.
+
    my $btn = $self->{button1}; # fetch widgets as instance attributes by its name
    my $window = $self->{main_window};
    my $custom = $self->{custom_widget};
@@ -131,10 +132,9 @@ This class provides the following public methods:
 This method creates a new object of your subclass of Gtk2::GladeXML::Simple,
 representing an application main-window.  The C<$gladefile> parameter
 is the name of the file created by the Glade Visual Editor.
-The C<$root> is an optional
-parameter that tells C<libglade> the name of the widget to start
-building from. The optional C<$domain> parameter that specifies the translation
-domain for the glade xml file. (Example values: "es", "en-US".)
+The C<$root> is an optional parameter that tells C<libglade> the name of the widget
+to start building from. The optional C<$domain> parameter that specifies the translation
+domain for the glade xml file ( undef by default ).
 
 =item $app->glade_object()
 
@@ -152,7 +152,7 @@ engine using WWW::Search::Yahoo.
    use strict;
    use warnings;
    use Gtk2 '-init';
-   use Gtk2::Html2;
+   use Gtk2::Html2; #not part of the Gtk2 default widgets
    use Gtk2::GladeXML::Simple;
    use WWW::Search;
 
@@ -181,7 +181,9 @@ engine using WWW::Search::Yahoo.
 
    sub new {
        my $class = shift;
+       #Calling Gtk2::GladeXML::Simple->new()
        my $self = $class->SUPER::new( 'yahoo.glade' );
+       #Initialize the search engine
        $self->{_yahoo} = WWW::Search->new( 'Yahoo' );
        return $self;
    }
@@ -200,11 +202,12 @@ engine using WWW::Search::Yahoo.
        $self->{buf} = $buf;
    }
 
+   ### Signal handlers, now they're methods of the class ###
    sub on_Clear_clicked {
        my $self = shift;
-       my $html = $self->{custom1};
+       my $html = $self->{custom1}; #fetch widgets by their names
        $html->{document}->clear;
-       my $statusbar = $self->{statusbar1};
+       my $statusbar = $self->{statusbar1}; #another widget
        $statusbar->pop( $statusbar->get_context_id( "Yahoo" ) );
    }
 
@@ -222,6 +225,7 @@ engine using WWW::Search::Yahoo.
        $html->{document}->close_stream;
    }
 
+   ### Creation function for the custom widget, method of the class as well ###
    sub create_htmlview {
        my $self = shift;
        my $view = Gtk2::Html2::View->new;
@@ -240,11 +244,12 @@ engine using WWW::Search::Yahoo.
 
    package main;
 
-   YahooApp->new->run;
+   YahooApp->new->run; #Go!
 
    1;
 
-For more examples, see the I<examples> directory in the tarball distribution for this module.
+The I<yahoo.glade> file needed for this example is in the I<examples> directory, along
+with other example programs.
 
 =head1 SEE ALSO
 
@@ -253,6 +258,14 @@ L<Gtk2::GladeXML>, L<Gtk2>
 The Libglade Reference Manual at L<http://developer.gnome.org/doc/API/2.0/libglade/>
 
 The gtk2 API Reference at L<http://developer.gnome.org/doc/API/2.0/gtk/index.html>
+
+=head1 TODO
+
+Tests.
+
+More examples?
+
+Add Gtk2::GladeXML::Simple->new_from_buffer()?
 
 =head1 AUTHOR
 

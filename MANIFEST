@@ -8,11 +8,11 @@ examples/sample/Sample.pl
 examples/yahoo/yahoo.glade
 examples/yahoo/yahoo.gladep
 examples/yahoo/YahooApp.pl
+Gtk2-GladeXML-Simple-0.2.tar.gz
 lib/Gtk2/GladeXML/Simple.pm
 Makefile.PL
 MANIFEST
 MANIFEST.SKIP
 README
 t/1.t
-t/example.glade
 META.yml                                 Module meta-data (added by MakeMaker)
