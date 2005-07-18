@@ -34,9 +34,9 @@ DESCRIPTION
 
       * Signal handlers callbacks as methods of your class.
       
-      * Signal handler autoconection.
+      * Autoconnection of signal handlers.
 
-      * Custom widget creation function autoconection.
+      * Autocalling of creation functions for custom widgets.
 
       * Access to widgets as instance attributes.
 

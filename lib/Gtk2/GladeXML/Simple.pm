@@ -1,57 +1,64 @@
 package Gtk2::GladeXML::Simple;
 
-use 5.008006;
+use 5.008;
 use strict;
 use warnings;
 use Carp;
+use Gtk2;
 use Gtk2::GladeXML;
 
-our $VERSION;
-
-$VERSION = '0.22';
+our $VERSION = '0.3';
 
 sub new {
-    my ( $class, $gladefile, $root, $domain ) = @_;
+    my ( $caller, $gladefile, $root, $domain ) = @_;
     croak "You need to specify a glade file first" unless $gladefile;
-    my $self = bless {}, $class;
+    my $self = bless {}, ref( $caller ) || $caller;
     Gtk2::Glade->set_custom_handler( sub{ $self->_custom_handler( @_ ) } );
     $self->{xml} = Gtk2::GladeXML->new( $gladefile, $root, $domain );
     $self->_signal_autoconnect_simple;
-    $self->_get_widgets;
+    $self->get_widgets;
     return $self;
 }
 
-sub glade_object { shift->{xml} }
-
-sub _get_widgets {
+sub glade_object {
     my ( $self ) = @_;
-    foreach my $w ( $self->{xml}->get_widget_prefix( '' ) ) {
-	$self->{$w->get_name} = $w;
-    }
+    return $self->{xml};
+}
+
+sub get_widget {
+    my ( $self, $widget ) = @_;
+    return $self->{$widget};
+}
+
+sub get_widgets {
+    my ( $self ) = @_;
+    $self->{ $_->get_widget_name } = $_
+      foreach $self->{xml}->get_widget_prefix( '' );
+}
+
+sub run {
+    my ( $self ) = @_;
+    Gtk2->main;
 }
 
 sub _custom_handler {
     my ( $self, $xml, $func_name, $name, $str1, $str2, $int1, $int2 ) = @_;
-    croak "Invalid function $func_name in package " . ref( $self )
-      unless defined $self->can( $func_name );
-    $self->$func_name;
+    $self->$func_name( $str1, $str2, $int1, $int2 );
 }
 
 sub _signal_autoconnect_simple {
-	my ( $self ) = @_;
-	$self->{xml}->signal_autoconnect( \&_autoconnect_helper, $self );
+    my ( $self ) = @_;
+    $self->{xml}->signal_autoconnect( \&_autoconnect_helper, $self );
 }
 
 sub _autoconnect_helper {
-    my ( $handler_name, $gobject, $signal_name, $signal_data,
+    my ( $handler_name, $object, $signal_name, $signal_data,
 	 $connect_object, $is_after, $self ) = @_;
-    croak "Invalid function $handler_name in package " . ref( $self )
-      unless defined $self->can( $handler_name );
 
     my $connect_func = $is_after ? 'signal_connect_after' : 'signal_connect';
-    $gobject->$connect_func( $signal_name,
-			     sub { $self->$handler_name( @_ ) },
-			     $signal_data );
+    $object->$connect_func( $signal_name,
+			    sub { $self->$handler_name( @_ ) },
+			    $signal_data );
 }
 
 1;
@@ -78,15 +85,16 @@ Gtk2::GladeXML::Simple - A clean object-oriented interface to Gtk2::GladeXML
    sub on_button_clicked {
       my $self = shift;
       # You have access to your widgets directly
+      # or using $self->get_widget( widget_name )
       my $button = $self->{button1};
    }
 
 =head1 DESCRIPTION
 
-Gtk2::Glade::XML::Simple is a module that provides a clean and easy interface
+Gtk2::GladeXML::Simple is a module that provides a clean and easy interface
 for Gnome/Gtk2 and Glade applications using an object-oriented syntax. You just
 make Gtk2::GladeXML::Simple your application's base class, have your C<new> call
-C<SUPER::new>, and the module will do the hard work for you.
+C<SUPER::new>, and the module will do the tedious and dirty work for you.
 
 Gtk2::GladeXML::Simple offers:
 
@@ -94,7 +102,7 @@ Gtk2::GladeXML::Simple offers:
 
 =item *
 
-Signal-handler callbacks as methods of your class.
+Signal handler callbacks as methods of your class.
 
    sub on_button1_clicked {
       my $self = shift; # $self always received as first parameter
@@ -108,13 +116,13 @@ Autoconnection of signal handlers.
 
 =item *
 
-Autoconnection of custom widget-creation functions.
+Autocalling of creation functions for custom widgets.
 
 =item *
 
 Access to the widgets as instance attributes.
 
-   my $btn = $self->{button1}; # fetch widgets as instance attributes by its name
+   my $btn = $self->{button1}; # fetch widgets as instance attributes by their names
    my $window = $self->{main_window};
    my $custom = $self->{custom_widget};
 
@@ -127,18 +135,31 @@ This class provides the following public methods:
 
 =over
 
-=item $app = SomeSubClass->new( $gladefile I<[, $root, $domain ]> );
+=item new( $gladefile I<[, $root, $domain ]> );
 
-This method creates a new object of your subclass of Gtk2::GladeXML::Simple,
-representing an application main-window.  The C<$gladefile> parameter
-is the name of the file created by the Glade Visual Editor.
+This method creates a new object of your subclass of Gtk2::GladeXML::Simple.
+The C<$gladefile> parameter is the name of the file created by the Glade Visual Editor.
 The C<$root> is an optional parameter that tells C<libglade> the name of the widget
 to start building from. The optional C<$domain> parameter that specifies the translation
 domain for the glade xml file ( undef by default ).
 
-=item $app->glade_object()
+=item glade_object
 
 This method returns the Gtk2::GladeXML object in play.
+
+=item get_widget( $widget_name )
+
+Returns the widget with given name. Same as calling $self->{$widget_name}.
+
+=item get_widgets
+
+Returns a list with all the widgets in the glade file.
+
+=item run
+
+Call this method in order to run your application. If you need another event loop
+rather than the Gtk one, override I<run> in your class with your event loop (for
+example the GStreamer event loop).
 
 =back
 
@@ -152,7 +173,7 @@ engine using WWW::Search::Yahoo.
    use strict;
    use warnings;
    use Gtk2 '-init';
-   use Gtk2::Html2; #not part of the Gtk2 default widgets
+   use Gtk2::Html2; #not part of the Gtk2 core widgets
    use Gtk2::GladeXML::Simple;
    use WWW::Search;
 
@@ -181,7 +202,7 @@ engine using WWW::Search::Yahoo.
 
    sub new {
        my $class = shift;
-       #Calling Gtk2::GladeXML::Simple->new()
+       #Calling our super class constructor
        my $self = $class->SUPER::new( 'yahoo.glade' );
        #Initialize the search engine
        $self->{_yahoo} = WWW::Search->new( 'Yahoo' );
@@ -238,8 +259,6 @@ engine using WWW::Search::Yahoo.
 
    sub gtk_main_quit { Gtk2->main_quit }
 
-   sub run { Gtk2->main }
-
    1;
 
    package main;
@@ -248,7 +267,7 @@ engine using WWW::Search::Yahoo.
 
    1;
 
-The I<yahoo.glade> file needed for this example is in the I<examples> directory,along 
+The I<yahoo.glade> file needed for this example is in the I<examples> directory, along
 with other example programs.
 
 =head1 SEE ALSO
@@ -265,7 +284,9 @@ Tests.
 
 More examples?
 
-Add Gtk2::GladeXML::Simple->new_from_buffer()?
+Add Gtk2::GladeXML::Simple::new_from_buffer()?
+
+Support to I18N ( bindtextdomain )
 
 =head1 AUTHOR
 
@@ -276,7 +297,7 @@ lots of great ideas to improve this module. Sandino "tigrux" Flores <tigrux at x
 who is the author of SimpleGladeApp which is the main source of this module's core idea.
 Sean M. Burke <sburke at cpan dot org> for constantly helping me with ideas and cleaning my POD.
 
-=head1 LICENSE
+=head1 COPYRIGHT AND LICENSE
 
 Copyright (C) 2005 by Marco Antonio Manzo
 
@@ -284,3 +305,4 @@ This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.8.6 or,
 at your option, any later version of Perl 5 you may have available.
 
+=cut

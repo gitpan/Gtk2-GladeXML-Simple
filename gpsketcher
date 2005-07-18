@@ -1,0 +1,360 @@
+#!/usr/bin/perl
+
+package main;
+
+use strict;
+use warnings;
+use Getopt::Std;
+
+our $VERSION = '0.1';
+
+my %opts;
+getopts( 'hvg:o:', \%opts );
+
+sub help {
+    print<<EOH;
+gpsketcher $VERSION, a Glade-Perl code sketcher
+
+usage: gpsketcher [options]
+
+[options]:
+
+   -h               This message
+   -g glade_file    glade file to parse
+   -o output_file   file to write the output code to
+   -v               Prints the program version
+
+Bug reports and suggestions to <marcoam\@perl.org.mx>
+EOH
+}
+
+help() and exit if $opts{h};
+print "gpsketcher $VERSION\n" and exit if $opts{v};
+
+my $glade_parser = Parser->new( $opts{g} );
+my $parser = XML::SAX::ParserFactory->parser( Handler => $glade_parser );
+$parser->parse_uri( $opts{g} );
+
+my $codegen = CodeGen->new( $glade_parser->get_data );
+$codegen->write_file( $opts{o} );
+
+1;
+
+package Parser;
+
+use Carp;
+use XML::SAX;
+
+use base qw( XML::SAX::Base );
+
+use constant TRUE => 1;
+use constant FALSE => !TRUE;
+
+sub new {
+    my ( $class, $glade_file ) = @_;
+    croak "Invalid glade file filename" unless $glade_file =~ /\.glade$/;
+    my $self = bless { } => $class;
+    $self->{creation_function} = FALSE; # is it creation_function?
+    $self->{requires_gnome} = FALSE; # is it a Gnome App?
+    $self->{data} = {}; # data tree for CodeGen
+    $self->{stack} = []; # widgets stack
+    $self->{main_widget} = FALSE; # is main_widget set?
+    $self->{data}{glade_file} = $glade_file;
+    $self->{data}{date} = localtime( time );
+    $self->{data}{program_name} = ( split /\./, $glade_file )[0];
+    return $self;
+}
+
+sub get_data { shift->{data} }
+
+sub on_widget {
+    my ( $self, $element ) = @_;
+    my $widget = $element->{Attributes}{"{}id"}{Value};
+    unless ( @{ $self->{stack} } ) {
+	if ( !$self->{main_widget } ) {
+	    $self->{data}{main_package} = { name => $widget };
+	} else {
+	    $self->{data}{packages}{$widget} = { name => $widget };
+	}
+	$self->{top_widget} = $widget;
+    }
+    push @{ $self->{stack} }, $widget;
+}
+
+sub on_signal {
+    my ( $self, $element ) = @_;
+    my $top = $self->{top_widget};
+    my $widget = @{ $self->{stack} }[-1];
+    my $handler = $element->{Attributes}{"{}handler"}{Value};
+    if ( $self->{main_widget} ) {
+	my $node = $self->{data}{packages}{$top};
+	push @{ $node->{callbacks} }, {
+				       widget_name => $widget,
+				       name => $handler
+				      };
+    } else {
+	my $node = $self->{data}{main_package};
+	push @{ $node->{callbacks} }, {
+				       widget_name => $widget,
+				       name => $handler
+				      };
+    }
+}
+
+sub on_property {
+    my ( $self, $element ) = @_;
+    my $prop = $element->{Attributes}{"{}name"}{Value};
+    $self->{creation_function} = TRUE if $prop eq 'creation_function';
+}
+
+sub on_widget_end {
+    my ( $self, $element ) = @_;
+    my $widget = pop @{ $self->{stack} };
+    $self->{main_widget} = TRUE if $widget eq $self->{top_widget};
+}
+
+sub on_property_end {
+    my ( $self, $element ) = @_;
+    $self->{creation_function} = FALSE;
+}
+
+sub on_requires {
+    my ( $self, $element ) = @_;
+    my $val = $element->{Attributes}{'{}lib'}{Value};
+    $self->{data}{requires_gnome} = TRUE if $val and $val eq "gnome";
+}
+
+sub on_creation_function_characters {
+    my ( $self, $content ) = @_;
+    my $top = $self->{top_widget};
+    my $widget = @{ $self->{stack} }[-1];
+    my $cfunc_name = $content->{Data};
+    if ( $self->{main_package} ) {
+	my $node = $self->{data}{packages}{$top};
+	push @{ $node->{creation_functions} }, {
+						widget_name => $widget,
+						name => $cfunc_name
+					       }
+    } else {
+	my $node = $self->{data}{packages}{main_package};
+	push @{ $node->{creation_functions} }, {
+						widget_name => $widget,
+						name => $cfunc_name
+					       }
+    }
+}
+
+sub start_document {
+    my ( $self, $doc ) = @_;
+    # Intentionally blank, not needed
+}
+
+sub start_element {
+    my ( $self, $element ) = @_;
+    my $sub = $element->{Name};
+    my $method = "on_$sub";
+    $self->$method( $element ) if $self->can( $method  );
+}
+
+sub end_element {
+    my ( $self, $element ) = @_;
+    my $sub = $element->{Name};
+    my $method = "on_${sub}_end";
+    $self->$method( $element ) if $self->can( $method  );
+}
+
+sub end_document {
+    my ( $self, $doc ) = @_;
+    # Intentionally blank, not needed
+}
+
+sub characters {
+    my ( $self, $content ) = @_;
+    my $method = "";
+    if ( $self->{creation_function} ) {
+	$method = "on_creation_function_characters"
+    }
+    $self->$method( $content ) if $self->can( $method )
+}
+
+1;
+
+package CodeGen;
+
+sub new {
+    my ( $class, $data ) = @_;
+    my $self = bless $data, $class;
+    return $self;
+}
+
+sub write_file {
+    my ( $self, $filename ) = @_;
+    my $buffer = $self->_header;
+    $buffer .= $self->_main_package;
+    $buffer .= $self->_user_methods;
+    $buffer .= $self->_callbacks( $_ ) foreach @{ $self->{main_package}{callbacks} };
+    $buffer .= $self->_creation_funcs( $_ )
+      foreach @{ $self->{main_package}{creation_functions} };
+    $buffer .= $self->_footer;
+    foreach my $node ( keys %{ $self->{packages} } ) {
+	my $cur_node = $self->{packages}{$node};
+	$buffer .= $self->_package( $cur_node );
+	$buffer .= $self->_callbacks( $_ ) foreach @{ $cur_node->{callbacks} };
+	$buffer .= $self->_creation_funcs( $_ )
+	  foreach @{ $cur_node->{creation_functions} };
+	$buffer .= $self->_footer;
+    }
+    $buffer .= $self->_caller;
+
+    $filename ||= $self->{program_name} . '.pl';
+    open my $file, "> $filename" or die $!;
+    print $file $buffer;
+    close $file;
+}
+
+### Code generation subroutines ###
+
+sub _header {
+    my ( $self ) = @_;
+    my ( $date, $filename ) = ( $self->{date}, $self->{program_name} );
+    return<<HEADER;
+#!/usr/bin/perl
+
+#
+# $filename.pl
+# Autogenerated by Gtk2::GladeXML::Simple code sketcher
+# Generated on $date
+#
+
+HEADER
+}
+
+sub _main_package {
+    my ( $self ) = @_;
+    my $glade_file = $self->{glade_file};
+    my $gnome = '';
+    my $program_name = $self->{program_name};
+    if ( $self->{requires_gnome} ) {
+	$gnome = "use Gnome2;";
+
+    }
+    my $name = $self->{main_package}{name};
+    return<<MAIN;
+package $name;
+
+use strict;
+use warnings;
+use Glib qw( TRUE FALSE );
+use Gtk2 '-init';
+$gnome
+use Gtk2::GladeXML::Simple;
+
+use base qw( Gtk2::GladeXML::Simple );
+
+our ( \$VERSION, \$APPNAME ) = ( '0.1', '$program_name' );
+
+sub new {
+    my ( \$class ) = \@_;
+    my \$self = \$class->SUPER::new( '$glade_file', '$name', '$program_name' );
+
+    print "A new $name object has been created\\n";
+
+    return \$self;
+}
+
+MAIN
+}
+
+sub _package {
+    my ( $self, $node ) = @_;
+    my $name = $node->{name};
+    my $glade_file = $self->{glade_file};
+    my $program_name = $self->{program_name};
+    return<<PACKAGE,
+package $name;
+
+use base qw( Gtk2::GladeXML::Simple );
+
+sub new {
+    my ( \$class ) = \@_;
+    my \$self = \$class->SUPER::new( '$glade_file', '$name', '$program_name' );
+
+    print "A new $name object has been created\\n";
+
+    return \$self;
+}
+
+PACKAGE
+}
+
+sub _user_methods {
+    my ( $self ) = @_;
+    return<<OWN;
+#
+# Write your own methods here
+# ...
+#
+
+OWN
+}
+
+sub _callbacks {
+    my ( $self, $cb ) = @_;
+    my ( $cname, $widget ) = ( $cb->{name}, $cb->{widget_name} );
+    return<<CALLBACK;
+# Callback name: $cname
+# Called from widget: $widget
+#
+sub $cname {
+    my ( \$self, \$widget ) = \@_;
+
+    print "$cname called from ", \$widget->get_name, "\\n";
+}
+
+
+CALLBACK
+}
+
+sub _creation_funcs {
+    my ( $self, $cf ) = @_;
+    my ( $func, $widget ) = ( $cf->{name}, $cf->{widget_name} );
+    return<<FUNC;
+# $func
+# Creates widget: $widget
+#
+sub $func {
+    my ( \$self, \$str1, \$str2, \$int1, \$int2 ) = \@_;
+
+    print "$widget widget has been created\\n";
+}
+
+FUNC
+}
+
+sub _caller {
+    my ( $self ) = @_;
+    my $caller = $self->{main_package}{name};
+    my $gnome = $self->{requires_gnome} ?
+      "Gnome2::Program->init( \$APPNAME, \$VERSION );" : "";
+    return<<CALLER;
+package main;
+
+$gnome
+my \$app = $caller->new();
+\$app->run();
+
+1;
+
+CALLER
+}
+
+sub _footer {
+    my ( $self ) = @_;
+    return<<FOOTER;
+1;
+
+
+FOOTER
+}
+
+1;
