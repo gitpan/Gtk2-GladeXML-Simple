@@ -86,8 +86,6 @@ sub create_htmlview {
 
 sub gtk_main_quit { Gtk2->main_quit }
 
-sub run { Gtk2->main }
-
 1;
 
 package main;

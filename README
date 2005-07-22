@@ -20,6 +20,7 @@ SYNOPSIS
    sub on_button_clicked {
       my $self = shift;
       # You have access to your widgets directly
+      # or using $self->get_widget( widget_name )
       my $button = $self->{button1};
    }        
 
@@ -62,7 +63,8 @@ AUTHOR
    Special thanks in no order to Scott Arrington "muppet" <scott at asofyet dot org> who provided
    lots of great ideas to improve this module. Sandino "tigrux" Flores <tigrux at ximian dot com>
    who is the author of SimpleGladeApp which is the main source of this module's core idea.
-   Sean M. Burke <sburke at cpan dot org> for constantly helping me with ideas and cleaning my POD.
+   Sean M. Burke <sburke at cpan dot org> and Rocco Caputo <rcaputo at cpan dot org> for constantly
+   helping me with ideas and cleaning my POD.
 
        
 COPYRIGHT AND LICENCE

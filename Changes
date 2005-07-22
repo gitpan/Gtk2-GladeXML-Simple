@@ -1,6 +1,14 @@
 Revision history for Perl extension Gtk2::GladeXML::Simple.
 
-0.03
+0.031 Thu Jul 21 02:03:12 2005
+      - gpsketcher is now installed with the module, under perl's binary directory
+      - Added _peek() to gpsketcher, this methods examines the last value in the stack.
+      - Examples updated to the latest module API
+      - Added _get_widgets() private method
+      - fixed get_wigets() method
+      - gpsketcher version 0.3, fixes some creation functions issues when generating code
+
+0.03  Mon Jul 18 10:35:40 2005
       - More POD fixes
       - Added get_widgets() method
       - run() method is now part of the module

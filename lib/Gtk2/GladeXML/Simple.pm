@@ -7,7 +7,7 @@ use Carp;
 use Gtk2;
 use Gtk2::GladeXML;
 
-our $VERSION = '0.3';
+our $VERSION = '0.31';
 
 sub new {
     my ( $caller, $gladefile, $root, $domain ) = @_;
@@ -16,7 +16,7 @@ sub new {
     Gtk2::Glade->set_custom_handler( sub{ $self->_custom_handler( @_ ) } );
     $self->{xml} = Gtk2::GladeXML->new( $gladefile, $root, $domain );
     $self->_signal_autoconnect_simple;
-    $self->get_widgets;
+    $self->_get_widgets;
     return $self;
 }
 
@@ -32,13 +32,17 @@ sub get_widget {
 
 sub get_widgets {
     my ( $self ) = @_;
-    $self->{ $_->get_widget_name } = $_
-      foreach $self->{xml}->get_widget_prefix( '' );
+    return $self->glade_object->get_widget_prefix( '' );
 }
 
 sub run {
     my ( $self ) = @_;
     Gtk2->main;
+}
+
+sub _get_widgets {
+    my ( $self ) = @_;
+    $self->{ $_->get_widget_name } = $_ foreach $self->get_widgets;
 }
 
 sub _custom_handler {
@@ -48,7 +52,7 @@ sub _custom_handler {
 
 sub _signal_autoconnect_simple {
     my ( $self ) = @_;
-    $self->{xml}->signal_autoconnect( \&_autoconnect_helper, $self );
+    $self->glade_object->signal_autoconnect( \&_autoconnect_helper, $self );
 }
 
 sub _autoconnect_helper {
@@ -267,12 +271,22 @@ engine using WWW::Search::Yahoo.
 
    1;
 
-The I<yahoo.glade> file needed for this example is in the I<examples> directory, along
-with other example programs.
+The I<yahoo.glade> file needed for this example is in the I<examples> directory,
+along with other example programs.
+
+=head1 UTILITIES
+
+=head2 Rapid Application Development with I<gpsketcher>
+
+The Gtk2::GladeXML::Simple distribution includes I<gpsketcher>, a program that
+generates Perl code stubs from glade XML files. The code stubs include the basic
+framework for Gtk2::GladeXML::Simple interaction, method signatures, and everything
+that describes the application itself. Developers must fill in the code stubs to
+add the correct functionality to the application.
 
 =head1 SEE ALSO
 
-L<Gtk2::GladeXML>, L<Gtk2>
+L<Gtk2::GladeXML>, L<Gtk2>, L<gpsketcher>
 
 The Libglade Reference Manual at L<http://developer.gnome.org/doc/API/2.0/libglade/>
 
@@ -294,8 +308,9 @@ Marco Antonio Manzo <marcoam@perl.org.mx>
 
 Special thanks in no order to Scott Arrington "muppet" <scott at asofyet dot org> who provided
 lots of great ideas to improve this module. Sandino "tigrux" Flores <tigrux at ximian dot com>
-who is the author of SimpleGladeApp which is the main source of this module's core idea.
-Sean M. Burke <sburke at cpan dot org> for constantly helping me with ideas and cleaning my POD.
+who is the author of SimpleGladeApp and the main source of this module's core idea.
+Sean M. Burke <sburke at cpan dot org> and Rocco Caputo <rcaputo at cpan dot org> for constantly
+helping me with ideas and cleaning my POD.
 
 =head1 COPYRIGHT AND LICENSE
 

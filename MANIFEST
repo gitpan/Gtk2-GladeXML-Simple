@@ -1,3 +1,4 @@
+bin/gpsketcher
 Changes
 examples/mozembed/mozembed.glade
 examples/mozembed/mozembed.gladep
@@ -8,7 +9,6 @@ examples/sample/Sample.pl
 examples/yahoo/yahoo.glade
 examples/yahoo/yahoo.gladep
 examples/yahoo/YahooApp.pl
-gpsketcher
 lib/Gtk2/GladeXML/Simple.pm
 Makefile.PL
 MANIFEST

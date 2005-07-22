@@ -24,11 +24,6 @@ sub on_button2_clicked {
     Gtk2->main_quit;
 }
 
-sub run {
-    my $self = shift;
-    Gtk2->main;
-}
-
 1;
 
 package main;

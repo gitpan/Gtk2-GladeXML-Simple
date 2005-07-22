@@ -4,6 +4,7 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     NAME              => 'Gtk2::GladeXML::Simple',
     VERSION_FROM      => 'lib/Gtk2/GladeXML/Simple.pm',
+    EXE_FILES         => [ "bin/gpsketcher" ],
     PREREQ_PM         => {
 			  Gtk2::GladeXML => 0,
 			  Gtk2 => 0

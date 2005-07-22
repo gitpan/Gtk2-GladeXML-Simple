@@ -18,7 +18,6 @@ sub on_mozembed_location { $_[0]->{url_entry}->set_text(
 							$_[0]->{mozembed}->get_location
 						       ) }
 sub gtk_main_quit { Gtk2->main_quit }
-sub run { Gtk2->main }
 sub gtk_mozembed_new {
     my $self = shift;
     my $mozembed = Gtk2::MozEmbed->new;
