@@ -34,7 +34,7 @@ use strict;
 use warnings;
 use Getopt::Std;
 
-our $VERSION = '0.3';
+our $VERSION = '0.4';
 
 my %opts;
 getopts( 'hvg:o:', \%opts );
@@ -43,12 +43,11 @@ sub help {
     print<<EOH;
 gpsketcher $VERSION, a Glade-Perl code sketcher for Gtk2::GladeXML::Simple
 
-usage: gpsketcher [options]
+usage: gpsketcher -g glade_file [options]
 
 [options]:
 
    -h               This message
-   -g glade_file    glade file to parse
    -o output_file   file to write the output code to
    -v               Prints the program version
 
@@ -59,18 +58,27 @@ EOH
 help() and exit if $opts{h};
 print "gpsketcher $VERSION\n" and exit if $opts{v};
 
-my $glade_parser = Parser->new( $opts{g} );
-my $parser = XML::SAX::ParserFactory->parser( Handler => $glade_parser );
-$parser->parse_uri( $opts{g} );
+die "You need to specify a glade file with the -g option"
+  unless defined $opts{g};
+my $parser = Parser->new( $opts{g} );
+my $parser_factory = XML::SAX::ParserFactory->parser( Handler => $parser );
+$parser_factory->parse_uri( $opts{g} );
+my $codegen = CodeGen->new( $parser->get_data );
+$codegen->build( $opts{o} );
+$codegen->write_file;
 
-my $codegen = CodeGen->new( $glade_parser->get_data );
-$codegen->write_file( $opts{o} );
-
-1;
+############################################################
+#
+# Class: Parser
+#
+# Description:
+# Builds up a data tree from a glade XML file using SAX
+# events.
+#
+############################################################
 
 package Parser;
 
-use Carp;
 use XML::SAX;
 
 use base qw( XML::SAX::Base );
@@ -80,7 +88,7 @@ use constant FALSE => !TRUE;
 
 sub new {
     my ( $class, $glade_file ) = @_;
-    croak "Invalid glade file filename" unless $glade_file =~ /\.glade$/;
+    die "Invalid glade file filename" unless $glade_file =~ /\.glade$/;
     my $self = bless { } => $class;
     $self->{creation_function} = FALSE; # is it creation_function?
     $self->{requires_gnome} = FALSE; # is it a Gnome App?
@@ -111,11 +119,10 @@ sub on_widget {
 
 sub on_signal {
     my ( $self, $element ) = @_;
-    my $top = $self->{top_widget};
     my $widget = $self->_peek;
     my $handler = $element->{Attributes}{"{}handler"}{Value};
     if ( $self->{main_widget} ) {
-	my $node = $self->{data}{packages}{$top};
+	my $node = $self->{data}{packages}{$self->{top_widget}};
 	push @{ $node->{callbacks} }, {
 				       widget_name => $widget,
 				       name => $handler
@@ -141,118 +148,111 @@ sub on_widget_end {
     $self->{main_widget} = TRUE if $widget eq $self->{top_widget};
 }
 
-sub on_property_end {
-    my ( $self, $element ) = @_;
-    $self->{creation_function} = FALSE;
-}
+sub on_property_end { shift->{creation_function} = FALSE }
 
 sub on_requires {
     my ( $self, $element ) = @_;
-    my $val = $element->{Attributes}{'{}lib'}{Value};
-    $self->{data}{requires_gnome} = TRUE if $val and $val eq "gnome";
+    my $attr = $element->{Attributes}{'{}lib'}{Value};
+    $self->{data}{requires_gnome} = TRUE if $attr and $attr eq "gnome";
 }
 
 sub on_creation_function_characters {
     my ( $self, $content ) = @_;
-    my $top = $self->{top_widget};
     my $widget = $self->_peek;
-    my $cfunc_name = $content->{Data};
     if ( $self->{main_widget} ) {
-	my $node = $self->{data}{packages}{$top};
+	my $node = $self->{data}{packages}{$self->{top_widget}};
 	push @{ $node->{creation_functions} }, {
 						widget_name => $widget,
-						name => $cfunc_name
+						name => $content->{Data}
 					       }
     } else {
 	my $node = $self->{data}{main_package};
 	push @{ $node->{creation_functions} }, {
 						widget_name => $widget,
-						name => $cfunc_name
+						name => $content->{Data}
 					       }
     }
 }
 
-sub start_document {
-    my ( $self, $doc ) = @_;
-    # Intentionally blank, not needed
-}
-
 sub start_element {
     my ( $self, $element ) = @_;
-    my $sub = $element->{Name};
-    my $method = "on_$sub";
+    my $method = "on_" . $element->{Name};
     $self->$method( $element ) if $self->can( $method  );
 }
 
 sub end_element {
     my ( $self, $element ) = @_;
-    my $sub = $element->{Name};
-    my $method = "on_${sub}_end";
+    my $method = "on_" . $element->{Name} . "_end";
     $self->$method( $element ) if $self->can( $method  );
-}
-
-sub end_document {
-    my ( $self, $doc ) = @_;
-    # Intentionally blank, not needed
 }
 
 sub characters {
     my ( $self, $content ) = @_;
-    my $method = "";
-    $method = "on_creation_function_characters" if $self->{creation_function};
+    my $method = $self->{creation_function}
+      ? "on_creation_function_characters" : '';
     $self->$method( $content ) if $self->can( $method )
 }
 
-sub _peek {
-    my ( $self ) = @_;
-    return @{ $self->{stack} } ? @{ $self->{stack} }[-1] : undef;
-}
+sub _peek { @{ $_[0]->{stack} }[-1] }
 
-1;
+
+#############################################################
+#
+# Class: CodeGen
+#
+# Description:
+# Generates perl code stubs from the given data tree
+# returned from the Parser class.
+#
+#############################################################
 
 package CodeGen;
 
-sub new {
-    my ( $class, $data ) = @_;
-    my $self = bless $data, $class;
-    return $self;
+sub new { bless $_[1], $_[0] }
+
+sub build {
+    my ( $self, $filename ) = @_;
+    $self->{buffer} = '';
+    $filename ||= $self->{program_name};
+    $filename .= '.pl' unless $filename =~ /\.pl$/;
+    $self->{filename} = $filename;
+
+    $self->_header;
+    $self->_main_package;
+    $self->_user_methods;
+    $self->_callbacks( $_ ) foreach @{ $self->{main_package}{callbacks} };
+    $self->_creation_funcs( $_ )
+      foreach @{ $self->{main_package}{creation_functions} };
+    foreach my $node ( keys %{ $self->{packages} } ) {
+	my $cur_node = $self->{packages}{$node};
+	$self->_package( $cur_node );
+	$self->_callbacks( $_ ) foreach @{ $cur_node->{callbacks} };
+	$self->_creation_funcs( $_ )
+	  foreach @{ $cur_node->{creation_functions} };
+    }
+    $self->_caller;
+    return $self->{buffer};
 }
 
 sub write_file {
-    my ( $self, $filename ) = @_;
-    my $buffer = $self->_header;
-    $buffer .= $self->_main_package;
-    $buffer .= $self->_user_methods;
-    $buffer .= $self->_callbacks( $_ ) foreach @{ $self->{main_package}{callbacks} };
-    $buffer .= $self->_creation_funcs( $_ )
-      foreach @{ $self->{main_package}{creation_functions} };
-    $buffer .= $self->_footer;
-    foreach my $node ( keys %{ $self->{packages} } ) {
-	my $cur_node = $self->{packages}{$node};
-	$buffer .= $self->_package( $cur_node );
-	$buffer .= $self->_callbacks( $_ ) foreach @{ $cur_node->{callbacks} };
-	$buffer .= $self->_creation_funcs( $_ )
-	  foreach @{ $cur_node->{creation_functions} };
-	$buffer .= $self->_footer;
-    }
-    $buffer .= $self->_caller;
-
-    $filename ||= $self->{program_name} . '.pl';
-    open my $file, "> $filename" or die $!;
-    print $file $buffer;
-    close $file;
+    my ( $self ) = @_;
+    open my $file, '>', $self->{filename} 
+      or die "Coulnt' create ", $self->{filename}, ": $!";
+    print $file $self->{buffer};
+    return;
 }
 
 ### Code generation subroutines ###
 
 sub _header {
     my ( $self ) = @_;
-    my ( $date, $filename ) = ( $self->{date}, $self->{program_name} );
-    return<<HEADER;
+    my $filename = $self->{filename};
+    my $date = $self->{date};
+    return $self->{buffer} .=<<HEADER;
 #!/usr/bin/perl
 
 #
-# $filename.pl
+# $filename
 # Autogenerated by gpsketcher
 # Generated on $date
 #
@@ -266,7 +266,10 @@ sub _main_package {
     my $gnome = $self->{requires_gnome} ? "use Gnome2;" : '';
     my $program_name = $self->{program_name};
     my $name = $self->{main_package}{name};
-    return<<MAIN;
+    return $self->{buffer} .=<<MAIN;
+#
+# Class: $name
+#
 package $name;
 
 use strict;
@@ -297,7 +300,10 @@ sub _package {
     my $name = $node->{name};
     my $glade_file = $self->{glade_file};
     my $program_name = $self->{program_name};
-    return<<PACKAGE,
+    return $self->{buffer} .=<<PACKAGE;
+#
+# Class: $name
+#
 package $name;
 
 use base qw( Gtk2::GladeXML::Simple );
@@ -316,7 +322,7 @@ PACKAGE
 
 sub _user_methods {
     my ( $self ) = @_;
-    return<<OWN;
+    return $self->{buffer} .=<<OWN;
 #
 # Write your own methods here
 # ...
@@ -328,7 +334,8 @@ OWN
 sub _callbacks {
     my ( $self, $cb ) = @_;
     my ( $cname, $widget ) = ( $cb->{name}, $cb->{widget_name} );
-    return<<CALLBACK;
+    return $self->{buffer} .=<<CALLBACK;
+#
 # Callback name: $cname
 # Called from widget: $widget
 #
@@ -345,9 +352,10 @@ CALLBACK
 sub _creation_funcs {
     my ( $self, $cf ) = @_;
     my ( $func, $widget ) = ( $cf->{name}, $cf->{widget_name} );
-    return<<FUNC;
+    return $self->{buffer} .=<<FUNC;
+#
 # $func
-# Creates widget: $widget
+# Creates custom widget: $widget
 #
 sub $func {
     my ( \$self, \$str1, \$str2, \$int1, \$int2 ) = \@_;
@@ -357,6 +365,7 @@ sub $func {
     return \$widget;
 }
 
+
 FUNC
 }
 
@@ -365,7 +374,10 @@ sub _caller {
     my $caller = $self->{main_package}{name};
     my $gnome = $self->{requires_gnome} ?
       "Gnome2::Program->init( \$APPNAME, \$VERSION );" : '';
-    return<<CALLER;
+    return $self->{buffer} .=<<CALLER;
+#
+# main
+#
 package main;
 
 $gnome
@@ -375,15 +387,6 @@ my \$app = $caller->new();
 1;
 
 CALLER
-}
-
-sub _footer {
-    my ( $self ) = @_;
-    return<<FOOTER;
-1;
-
-
-FOOTER
 }
 
 1;

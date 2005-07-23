@@ -7,7 +7,7 @@ use Carp;
 use Gtk2;
 use Gtk2::GladeXML;
 
-our $VERSION = '0.31';
+our $VERSION = '0.32';
 
 sub new {
     my ( $caller, $gladefile, $root, $domain ) = @_;
